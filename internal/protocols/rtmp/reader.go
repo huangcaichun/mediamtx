@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/bluenviron/mediamtx/internal/protocols/rtmp/h265conf"
 	"time"
 
 	"github.com/abema/go-mp4"
@@ -132,6 +133,22 @@ func trackFromH264DecoderConfig(data []byte) (format.Format, error) {
 		SPS:               conf.SPS,
 		PPS:               conf.PPS,
 		PacketizationMode: 1,
+	}, nil
+}
+
+func trackFromH265DecoderConfig(data []byte) (format.Format, error) {
+	var conf h265conf.Conf
+	err := conf.Unmarshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse H265 config: %w", err)
+	}
+
+	return &format.H265{
+		PayloadTyp: 96,
+		VPS:        conf.VPS,
+		SPS:        conf.SPS,
+		PPS:        conf.PPS,
+		MaxDONDiff: conf.NalUnitLength,
 	}, nil
 }
 
@@ -402,9 +419,16 @@ outer:
 			if msg.Type == message.VideoTypeConfig {
 				if videoTrack == nil {
 					var err error
-					videoTrack, err = trackFromH264DecoderConfig(msg.Payload)
-					if err != nil {
-						return nil, nil, err
+					if message.CodecH264 == msg.Codec {
+						videoTrack, err = trackFromH264DecoderConfig(msg.Payload)
+						if err != nil {
+							return nil, nil, err
+						}
+					} else if message.CodecH265 == msg.Codec {
+						videoTrack, err = trackFromH265DecoderConfig(msg.Payload)
+						if err != nil {
+							return nil, nil, err
+						}
 					}
 
 					// stop the analysis if both tracks are found
